@@ -4,27 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"time"
 )
 
-type WithNetConnOption func(conn net.Conn)
-
-func WithReadDeadline(duration time.Duration) WithNetConnOption {
-	return func(conn net.Conn) {
-		_ = conn.SetReadDeadline(time.Now().Add(duration))
-	}
-}
-
-func WithWriteDeadline(duration time.Duration) WithNetConnOption {
-	return func(conn net.Conn) {
-		_ = conn.SetWriteDeadline(time.Now().Add(duration))
-	}
-}
-
-func WriteAll(conn net.Conn, data []byte, options ...WithNetConnOption) error {
-	for _, option := range options {
-		option(conn)
-	}
+func WriteAll(conn net.Conn, data []byte) error {
 	total := 0
 	for total < len(data) {
 		n, err := conn.Write(data[total:])
@@ -36,11 +18,7 @@ func WriteAll(conn net.Conn, data []byte, options ...WithNetConnOption) error {
 	return nil
 }
 
-func ReadAll(conn net.Conn, options ...WithNetConnOption) ([]byte, error) {
-	for _, option := range options {
-		option(conn)
-	}
-
+func ReadAll(conn net.Conn) ([]byte, error) {
 	data := make([]byte, 1024)
 	count := 0
 
