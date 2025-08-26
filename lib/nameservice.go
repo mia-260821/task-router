@@ -126,7 +126,7 @@ func (ns *NameServiceImpl) Start() error {
 
 		result := ns.Lookup(data)
 
-		block, ok := Serialize(result)
+		block, ok := utils.Serialize(result)
 		if !ok {
 			return fmt.Errorf("failed to serialize")
 		}

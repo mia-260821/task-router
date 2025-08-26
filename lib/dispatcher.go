@@ -2,6 +2,7 @@ package lib
 
 import (
 	"log"
+	"task-router/lib/utils"
 )
 
 var (
@@ -61,7 +62,7 @@ func (d *Dispatcher) process(block []byte) {
 	// find a proper worker
 	// assign the task to worker
 	// monitor the task execution
-	task, ok := Deserialize[Task](block)
+	task, ok := utils.Deserialize[Task](block)
 	if !ok {
 		logger.Println("Deserialize task fail")
 		return
