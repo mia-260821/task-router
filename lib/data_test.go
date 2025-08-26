@@ -19,11 +19,11 @@ func TestTask(t *testing.T) {
 		},
 	}
 
-	block, ok := SerializeTask[Task](task1)
+	block, ok := Serialize[Task](task1)
 	assert.True(t, ok, "serialize task")
 	assert.NotNil(t, block, "serialize block")
 
-	deTask1, ok := DeserializeTask[Task](block)
+	deTask1, ok := Deserialize[Task](block)
 	assert.True(t, ok, "deserialize task")
 	assert.Equal(t, task1, deTask1, "deserialize task")
 }

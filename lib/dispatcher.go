@@ -1,5 +1,18 @@
 package lib
 
+import (
+	"log"
+)
+
+var (
+	logger = log.Default()
+)
+
+type Worker struct{}
+
+func (worker *Worker) Run(task Task) {
+}
+
 type WorkerManger struct {
 	workers []any
 }
@@ -12,16 +25,20 @@ func (m *WorkerManger) AddWorker(worker any) {
 	m.workers = append(m.workers, worker)
 }
 
+func (m *WorkerManger) FindWorker(requirement TaskMeta) (*Worker, bool) {
+	return &Worker{}, true
+}
+
 type Dispatcher struct {
 	workerMgr    WorkerManger
 	brokerClient BrokerClient
 
-	retryList []interface{}
+	retryList []*Task
 }
 
 func NewDispatcher() *Dispatcher {
 	return &Dispatcher{
-		retryList: make([]interface{}, 100),
+		retryList: make([]*Task, 100),
 	}
 }
 
@@ -39,11 +56,23 @@ func (d *Dispatcher) Start() {
 	}
 }
 
-func (d *Dispatcher) process(v interface{}) {
+func (d *Dispatcher) process(block []byte) {
 	// collect task info
 	// find a proper worker
 	// assign the task to worker
 	// monitor the task execution
+	task, ok := Deserialize[Task](block)
+	if !ok {
+		logger.Println("Deserialize task fail")
+		return
+	}
+	worker, ok := d.workerMgr.FindWorker(task.Meta)
+	if !ok {
+		task.Status = "PENDING_FOR_WORKER"
+		d.retryList = append(d.retryList, &task)
+		return
+	}
+	worker.Run(task)
 }
 
 func (d *Dispatcher) Stop() {}

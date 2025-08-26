@@ -20,9 +20,11 @@ type Task struct {
 	Id      string
 	Meta    TaskMeta
 	Command TaskCommand
+
+	Status string
 }
 
-func SerializeTask[T any](data T) ([]byte, bool) {
+func Serialize[T any](data T) ([]byte, bool) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	if err := enc.Encode(data); err != nil {
@@ -32,7 +34,7 @@ func SerializeTask[T any](data T) ([]byte, bool) {
 	return buf.Bytes(), true
 }
 
-func DeserializeTask[T any](block []byte) (T, bool) {
+func Deserialize[T any](block []byte) (T, bool) {
 	var data T
 	buf := bytes.NewBuffer(block)
 	dec := gob.NewDecoder(buf)
