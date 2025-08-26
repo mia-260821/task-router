@@ -9,6 +9,7 @@ import (
 	"strings"
 	"task-router/lib/queue"
 	"task-router/lib/utils"
+	"time"
 )
 
 type BrokerServer struct {
@@ -24,7 +25,7 @@ func (s *BrokerServer) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	// Read Client Role: Producer or Consumer
-	buf, err := utils.ReadAll(conn)
+	buf, err := utils.ReadAll(conn, utils.WithReadDeadline(time.Second*5))
 	if err != nil {
 		fmt.Println("Error reading role:", err)
 		return
@@ -44,12 +45,12 @@ func (s *BrokerServer) handleConnection(conn net.Conn) {
 }
 
 func (s *BrokerServer) handleProducer(conn net.Conn) {
-	if err := utils.WriteAll(conn, []byte("HELLO FROM SERVER")); err != nil {
+	if err := utils.WriteAll(conn, []byte("HELLO FROM SERVER"), utils.WithWriteDeadline(5*time.Second)); err != nil {
 		fmt.Println("error writing to connection" + err.Error())
 		return
 	}
 	// Read MESSAGE
-	buffer, err := utils.ReadAll(conn)
+	buffer, err := utils.ReadAll(conn, utils.WithReadDeadline(30*time.Second))
 	if err != nil {
 		fmt.Println("error reading from connection" + err.Error())
 		return
@@ -66,19 +67,19 @@ func (s *BrokerServer) handleProducer(conn net.Conn) {
 		reply = "ERR"
 	}
 	// Send REPLY
-	if err = utils.WriteAll(conn, []byte(reply)); err != nil {
+	if err = utils.WriteAll(conn, []byte(reply), utils.WithWriteDeadline(5*time.Second)); err != nil {
 		fmt.Println("error writing to connection" + err.Error())
 	}
 }
 
 func (s *BrokerServer) handleConsumer(conn net.Conn) {
-	if err := utils.WriteAll(conn, []byte("HELLO FROM SERVER")); err != nil {
+	if err := utils.WriteAll(conn, []byte("HELLO FROM SERVER"), utils.WithWriteDeadline(5*time.Second)); err != nil {
 		fmt.Println("error writing to connection" + err.Error())
 		return
 	}
 	// Read Number of Messages
 	size := 0
-	buffer, err := utils.ReadAll(conn)
+	buffer, err := utils.ReadAll(conn, utils.WithReadDeadline(5*time.Second))
 	if err != nil {
 		fmt.Println("error reading from connection" + err.Error())
 		return
@@ -94,11 +95,20 @@ func (s *BrokerServer) handleConsumer(conn net.Conn) {
 			fmt.Println("error dequeue message")
 			break
 		}
-		if block, ok := msg.([]byte); !ok {
+		block, ok := msg.([]byte)
+		if !ok {
 			fmt.Println("error convert message to bytes	")
 			break
-		} else if err = utils.WriteAll(conn, block); err != nil {
+		}
+		if err = utils.WriteAll(conn, block, utils.WithWriteDeadline(30*time.Second)); err != nil {
 			fmt.Println("error writing to connection" + err.Error())
+			break
+		}
+		if reply, err := utils.ReadAll(conn, utils.WithReadDeadline(5*time.Second)); err != nil {
+			fmt.Println("error reading from connection" + err.Error())
+			break
+		} else if string(reply) != "OK" {
+			fmt.Println("error invalid reply: " + string(reply))
 			break
 		}
 	}
@@ -142,10 +152,16 @@ func (s *BrokerServer) Start(ctx context.Context) error {
 type BrokerClient struct {
 	serverHost string
 	serverPort uint16
+
+	batchReadSize uint16
 }
 
 func NewBrokerClient(serverHost string, serverPort uint16) *BrokerClient {
-	return &BrokerClient{serverHost: serverHost, serverPort: serverPort}
+	return &BrokerClient{
+		serverHost:    serverHost,
+		serverPort:    serverPort,
+		batchReadSize: 1024,
+	}
 }
 
 func (c *BrokerClient) Produce(data []byte) (string, error) {
@@ -162,10 +178,10 @@ func (c *BrokerClient) Produce(data []byte) (string, error) {
 	}
 
 	// Send Message
-	if err = utils.WriteAll(conn, data); err != nil {
+	if err = utils.WriteAll(conn, data, utils.WithWriteDeadline(30*time.Second)); err != nil {
 		return "", fmt.Errorf("could not send message: " + err.Error())
 	}
-	reply, err := utils.ReadAll(conn)
+	reply, err := utils.ReadAll(conn, utils.WithReadDeadline(30*time.Second))
 	if err != nil {
 		return "", fmt.Errorf("could not receive message: " + err.Error())
 	}
@@ -210,23 +226,26 @@ func (c *BrokerClient) Consume(n uint16) (<-chan []byte, error) {
 	}
 
 	// Send batch size
-	if err = utils.WriteAll(conn, []byte("10")); err != nil {
+	size := int(c.batchReadSize)
+	if err = utils.WriteAll(conn, []byte(strconv.Itoa(size))); err != nil {
 		return nil, fmt.Errorf("could not send message: " + err.Error())
 	}
 	// Read
-	size := 10
-
 	out := make(chan []byte, size)
 	defer close(out)
 
 	go func() {
 		for i := 0; i < size; i++ {
-			buffer, err := utils.ReadAll(conn)
+			buffer, err := utils.ReadAll(conn, utils.WithReadDeadline(30*time.Second))
 			if err != nil {
 				fmt.Println("could not receive message: " + err.Error())
 				break
 			}
 			out <- buffer
+			if err = utils.WriteAll(conn, []byte("OK"), utils.WithWriteDeadline(5*time.Second)); err != nil {
+				fmt.Println("could not send message: " + err.Error())
+				break
+			}
 		}
 	}()
 	return out, nil
